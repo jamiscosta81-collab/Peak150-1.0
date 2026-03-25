@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Woodward Peak 150 - Multi-Turbine</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --ww-dark: #1A1A1A; --ww-panel: #2C3539; --ww-blue: #005A8C;
+            --ww-orange: #F39C12; --lcd-bg: #879E66; --lcd-text: #101820;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Roboto', sans-serif; }
+        body { background: var(--ww-dark); color: white; display: flex; justify-content: center; }
+        .handheld { width: 100%; max-width: 480px; background: var(--ww-panel); min-height: 100vh; display: flex; flex-direction: column; border: 2px solid #111; }
+        .header { background: var(--ww-blue); padding: 15px; text-align: center; font-weight: bold; border-bottom: 4px solid #003355; font-size: 16px; }
+        
+        .lcd-bezel { background: #000; padding: 10px; margin: 10px; border-radius: 4px; }
+        .lcd-screen { background: var(--lcd-bg); color: var(--lcd-text); font-family: 'Share Tech Mono', monospace; padding: 10px; height: 320px; overflow-y: auto; border-radius: 2px; }
+        
+        .menu-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px; margin-bottom: 10px; }
+        .tab { flex: 1 1 45%; background: #444; color: #ccc; text-align: center; padding: 10px 0; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; text-transform: uppercase; }
+        .tab.active { background: var(--ww-blue); color: white; }
+        
+        .lcd-block { margin-bottom: 8px; border: 1px solid rgba(0,0,0,0.3); }
+        .lcd-title { background: rgba(0,0,0,0.1); font-weight: bold; padding: 6px; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; }
+        .lcd-content { padding: 6px; display: none; }
+        .lcd-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 12px; border-bottom: 1px dotted rgba(0,0,0,0.2); }
+        .lcd-input, .lcd-select { background: rgba(255,255,255,0.2); border: 1px solid rgba(0,0,0,0.4); color: var(--lcd-text); font-family: 'Share Tech Mono', monospace; font-size: 12px; font-weight: bold; text-align: right; width: 90px; padding: 2px; }
+        
+        .btn-action { margin: 5px 10px; background: var(--ww-orange); color: #000; border: none; padding: 12px; font-weight: bold; font-size: 12px; border-radius: 4px; cursor: pointer; text-transform: uppercase; }
+        .btn-save { background: #27AE60; color: white; margin-top: 15px; width: 100%; padding: 10px; border: none; font-weight: bold; cursor: pointer; }
+        .btn-load { background: var(--ww-blue); color: white; width: 100%; padding: 10px; border: none; font-weight: bold; cursor: pointer; margin-top: 5px; }
+        
+        .db-list { background: rgba(0,0,0,0.1); padding: 10px; margin-top: 10px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="handheld">
+    <div class="header">PEAK 150 <br><span style="font-size:10px; color:#A9DFFA;">MULTI-TURBINE MANAGER</span></div>
+
+    <div class="lcd-bezel">
+        <div class="lcd-screen" id="screen-content"></div>
+    </div>
+
+    <div class="menu-tabs">
+        <div class="tab active" onclick="openTab('data', this)">1. Identificação</div>
+        <div class="tab" onclick="openTab('config', this)">2. Configure</div>
+        <div class="tab" onclick="openTab('service', this)">3. Service</div>
+        <div class="tab" onclick="openTab('archive', this)" style="background: #27AE60; color: white;">💾 Arquivo</div>
+    </div>
+
+    <button class="btn-action" onclick="gerarLaudo()">🖨️ Imprimir PDF (Turbina Atual)</button>
+</div>
+
+<script>
+    // ARQUITETURA OFICIAL WOODWARD (Sequência Exata das suas Imagens)
+    const templateDB = {
+        data: [
+            { label: "Tag / Nome da Turbina", val: "TURBINA 01 - MOENDA" },
+            { label: "Cliente", val: "TROPICAL" },
+            { label: "Data", val: "" },
+            { label: "Governor Part Number", val: "9905-860" },
+            { label: "Rotação Nominal", val: "5000" }
+        ],
+        config: [
+            { block: "Speed Configuration", items: [{ label: "Teeth seen by MPU", val: "32.00" }, { label: "MPU Gear Ratio 1", val: "1.00" }, { label: "Max Speed Level", val: "5333.00" }] },
+            { block: "Start Mode", items: [{ label: "Manual Start Mode?", val: "FALSE", type: "bool" }] },
+            { block: "Actuator Configuration", items: [{ label: "Use 20-160 mA?", val: "FALSE", type: "bool" }, { label: "Use 4-20 mA?", val: "TRUE", type: "bool" }] },
+            { block: "Operating Mode", items: [{ label: "Manual Control Only?", val: "FALSE", type: "bool" }, { label: "Use Remote Speed?", val: "TRUE", type: "bool" }] },
+            { block: "Readouts", items: [{ label: "Readout 4 mA Value", val: "0.0" }, { label: "Readout 20 mA Value", val: "10000.0" }] },
+            { block: "Relays", items: [{ label: "Use Speed Switch?", val: "TRUE", type: "bool" }, { label: "Reset Clear Trip?", val: "TRUE", type: "bool" }] },
+            { block: "Contact In #8", items: [{ label: "Config Contact #8", val: "FALSE", type: "bool" }] },
+            { block: "Modbus Communication", items: [{ label: "Use Modbus Port?", val: "FALSE", type: "bool" }] }
+        ],
+        service: [
+            { block: "Alarms", items: [{ label: "MPU 1 Failure", val: "FALSE", type: "bool" }, { label: "Turbine Trip", val: "TRUE", type: "bool" }] },
+            { block: "Trip", items: [{ label: "Last Trip Code", val: "1" }, { label: "External Trip", val: "TRUE", type: "bool" }] },
+            { block: "Speed Dynamics", items: [{ label: "Low Speed Gain", val: "1.82" }, { label: "High Speed Gain", val: "2.5" }] },
+            { block: "Speed Values", items: [{ label: "Actual Speed", val: "0.0" }, { label: "Min Governor Speed", val: "3539.0" }] },
+            { block: "Remote Setting", items: [{ label: "Actual Remote Setpoint", val: "4285" }] },
+            { block: "Failure Mpu Override", items: [{ label: "Auto-Ovrd-Off Speed", val: "400" }] },
+            { block: "Idle/Min Gov Ramp", items: [{ label: "Idle Speed", val: "1330" }, { label: "Min Governor Speed", val: "5550" }] },
+            { block: "Critical Speed Band", items: [{ label: "Use Critical Band?", val: "FALSE", type: "bool" }] },
+            { block: "SPD SW/HAND VLV", items: [{ label: "Relay 1 On", val: "5000" }] },
+            { block: "Valve Output", val: "0" },
+            { block: "Readout Adjustments", items: [{ label: "Readout 1 Offset", val: "0" }] },
+            { block: "I/O Check", items: [{ label: "MPU 1 (Hz)", val: "1.48" }, { label: "ANALOG IN", val: "24.9" }] }
+        ]
+    };
+
+    // Clona o template para o banco de dados ativo
+    let db = JSON.parse(JSON.stringify(templateDB));
+
+    function saveVal(val, tabId, bIdx, iIdx) {
+        if(bIdx === null) db[tabId][iIdx].val = val; 
+        else db[tabId][bIdx].items[iIdx].val = val; 
+    }
+
+    function toggleBlock(id) {
+        const el = document.getElementById(id);
+        el.style.display = el.style.display === 'block' ? 'none' : 'block';
+    }
+
+    // GESTÃO DE ARQUIVOS (LOCALSTORAGE)
+    function saveTurbine() {
+        const tName = db.data[0].val; // O nome da turbina no campo 1
+        if(!tName) return alert("Preencha o Tag/Nome da Turbina!");
+        localStorage.setItem("Peak150_" + tName, JSON.stringify(db));
+        alert("Configuração salva: " + tName);
+        openTab('archive', document.querySelectorAll('.tab')[3]);
+    }
+
+    function loadTurbine(key) {
+        const saved = localStorage.getItem(key);
+        if(saved) {
+            db = JSON.parse(saved);
+            alert("Turbina Carregada com Sucesso!");
+            openTab('data', document.querySelectorAll('.tab')[0]);
+        }
+    }
+
+    function deleteTurbine(key) {
+        if(confirm("Apagar esta configuração?")) {
+            localStorage.removeItem(key);
+            openTab('archive', document.querySelectorAll('.tab')[3]);
+        }
+    }
+
+    function openTab(tabId, el) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        if(el) el.classList.add('active');
+
+        let html = '';
+        if(tabId === 'data') {
+            db.data.forEach((i, idx) => {
+                html += `<div class="lcd-row"><span>${i.label}</span> <input class="lcd-input" value="${i.val}" oninput="saveVal(this.value, '${tabId}', null, ${idx})"></div>`;
+            });
+        } else if (tabId === 'archive') {
+            html += `<div style="text-align:center; font-weight:bold; text-decoration:underline;">MÁQUINAS SALVAS (MEMÓRIA)</div>`;
+            html += `<button class="btn-save" onclick="saveTurbine()">💾 SALVAR TURBINA ATUAL</button>`;
+            
+            html += `<div class="db-list"><b>Arquivos no Celular:</b><br><br>`;
+            let hasFiles = false;
+            for(let i=0; i<localStorage.length; i++) {
+                let key = localStorage.key(i);
+                if(key.startsWith("Peak150_")) {
+                    hasFiles = true;
+                    let displayName = key.replace("Peak150_", "");
+                    html += `
+                        <div style="border-bottom:1px solid #000; padding:5px 0; margin-bottom:5px;">
+                            <span>${displayName}</span><br>
+                            <button class="btn-load" onclick="loadTurbine('${key}')">Abrir</button>
+                            <button onclick="deleteTurbine('${key}')" style="background:#c0392b; color:white; border:none; padding:5px; margin-top:3px; cursor:pointer;">Apagar</button>
+                        </div>
+                    `;
+                }
+            }
+            if(!hasFiles) html += `<i>Nenhuma turbina salva ainda.</i>`;
+            html += `</div>`;
+        } else {
+            db[tabId].forEach((b, bIdx) => {
+                let itemsHtml = '';
+                if(b.items) {
+                    b.items.forEach((i, iIdx) => {
+                        if(i.type === 'bool') {
+                            let selT = i.val === 'TRUE' ? 'selected' : ''; let selF = i.val === 'FALSE' ? 'selected' : '';
+                            itemsHtml += `<div class="lcd-row"><span>${i.label}</span> 
+                                     <select class="lcd-select" onchange="saveVal(this.value, '${tabId}', ${bIdx}, ${iIdx})">
+                                        <option ${selT}>TRUE</option><option ${selF}>FALSE</option>
+                                     </select></div>`;
+                        } else {
+                            itemsHtml += `<div class="lcd-row"><span>${i.label}</span> <input class="lcd-input" value="${i.val}" oninput="saveVal(this.value, '${tabId}', ${bIdx}, ${iIdx})"></div>`;
+                        }
+                    });
+                }
+                html += `
+                <div class="lcd-block">
+                    <div class="lcd-title" onclick="toggleBlock('b_${tabId}_${bIdx}')"><span>${b.block}</span> <span>▼</span></div>
+                    <div class="lcd-content" id="b_${tabId}_${bIdx}" style="display:${bIdx === 0 ? 'block' : 'none'}">${itemsHtml}</div>
+                </div>`;
+            });
+        }
+        document.getElementById('screen-content').innerHTML = html;
+    }
+
+    function gerarLaudo() {
+        const { jsPDF } = window.jspdf; const doc = new jsPDF();
+        doc.setFillColor(0, 90, 140); doc.rect(0, 0, 210, 25, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.text("WOODWARD PEAK 150 - AS-BUILT", 15, 16);
+        doc.setTextColor(0, 0, 0); doc.setFontSize(10);
+        doc.text(`Turbina: ${db.data[0].val}`, 15, 35);
+        doc.text(`Cliente: ${db.data[1].val}`, 15, 42);
+
+        let tableData = [];
+        ['config', 'service'].forEach(tab => {
+            db[tab].forEach(b => {
+                tableData.push([{ content: `[${tab.toUpperCase()}] ${b.block}`, colSpan: 2, styles: { fillColor: [230,230,230], fontStyle: 'bold' } }]);
+                if(b.items) b.items.forEach(i => tableData.push([i.label, i.val]));
+            });
+        });
+
+        doc.autoTable({ startY: 50, head: [['Parâmetro', 'Valor Gravado']], body: tableData, theme: 'grid', headStyles: { fillColor: [0, 90, 140] }, pageBreak: 'auto' });
+        doc.save(`Laudo_${db.data[0].val.replace(/\s+/g, '_')}.pdf`);
+    }
+
+    openTab('data', document.querySelectorAll('.tab')[0]);
+</script>
+</body>
+</html>
