@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Woodward Peak 150 - Multi-Turbine</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --ww-dark: #1A1A1A; --ww-panel: #2C3539; --ww-blue: #005A8C;
+            --ww-orange: #F39C12; --lcd-bg: #879E66; --lcd-text: #101820;
+            --lcd-readonly: #728C3A; 
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Roboto', sans-serif; }
+        body { background: var(--ww-dark); color: white; display: flex; justify-content: center; min-height: 100vh; }
+        .handheld { width: 100%; max-width: 480px; background: var(--ww-panel); display: flex; flex-direction: column; border: 2px solid #111; position: relative; }
+        
+        .header { background: var(--ww-blue); padding: 15px; text-align: center; font-weight: bold; border-bottom: 4px solid #003355; font-size: 16px; }
+        
+        .lcd-bezel { background: #000; padding: 10px; margin: 10px; border-radius: 4px; }
+        .lcd-screen { background: var(--lcd-bg); color: var(--lcd-text); font-family: 'Share Tech Mono', monospace; padding: 10px; height: 350px; overflow-y: auto; border-radius: 2px; }
+        
+        .menu-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px; margin-bottom: 10px; }
+        .tab { flex: 1 1 30%; background: #444; color: #ccc; text-align: center; padding: 12px 2px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; text-transform: uppercase; }
+        .tab.active { background: var(--ww-blue); color: white; }
+        .tab-special { background: #8e44ad; color: white; }
+        .tab-save { background: #27AE60; color: white; flex: 1 1 100%; padding: 14px 0; margin-top: 4px; }
+        
+        .lcd-block { margin-bottom: 8px; border: 1px solid rgba(0,0,0,0.3); }
+        .lcd-title { background: rgba(0,0,0,0.1); font-weight: bold; padding: 8px 6px; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+        .lcd-content { padding: 6px; display: none; }
+        
+        .lcd-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 12px; border-bottom: 1px dotted rgba(0,0,0,0.2); padding-bottom: 4px; }
+        .lcd-row > span:first-child { flex: 1; padding-right: 8px; line-height: 1.2; word-break: break-word; }
+        .lcd-input, .lcd-select { flex-shrink: 0; background: rgba(255,255,255,0.2); border: 1px solid rgba(0,0,0,0.4); color: var(--lcd-text); font-family: 'Share Tech Mono', monospace; font-size: 13px; font-weight: bold; text-align: right; width: 100px; padding: 4px; outline: none; }
+        .lcd-readonly-val { font-weight: bold; background: rgba(0,0,0,0.1); padding: 2px 5px; border-radius: 2px; flex-shrink: 0; }
+        
+        .btn-action { margin: auto 10px 15px 10px; background: var(--ww-orange); color: #000; border: none; padding: 15px; font-weight: bold; font-size: 13px; border-radius: 4px; cursor: pointer; text-transform: uppercase; }
+        .btn-save, .btn-load { border: none; font-weight: bold; cursor: pointer; padding: 10px; color: white; border-radius: 4px; }
+        .btn-save { background: #27AE60; margin-top: 15px; width: 100%; }
+        .btn-load { background: var(--ww-blue); width: 100%; margin-top: 5px; }
+        
+        .cert-box { border: 1px dashed var(--lcd-text); padding: 10px; margin-bottom: 12px; font-size: 12px; background: rgba(255,255,255,0.1); }
+        .cert-box strong { color: #000; }
+    </style>
+</head>
+<body>
+
+<div class="handheld">
+    <div class="header">PEAK 150 <br><span style="font-size:10px; color:#A9DFFA;">MULTI-TURBINE MANAGER</span></div>
+
+    <div class="lcd-bezel">
+        <div class="lcd-screen" id="screen-content"></div>
+    </div>
+
+    <div class="menu-tabs">
+        <div class="tab active" onclick="openTab('data', this)">1. ID</div>
+        <div class="tab" onclick="openTab('config', this)">2. CONF</div>
+        <div class="tab" onclick="openTab('service', this)">3. SERV</div>
+        <div class="tab tab-special" onclick="openTab('secador', this)">📌 Secador</div>
+        <div class="tab tab-save" onclick="openTab('archive', this)">💾 ARQUIVO</div>
+    </div>
+
+    <button class="btn-action" onclick="gerarLaudo()">🖨️ Imprimir PDF (Atual)</button>
+</div>
+
+<script>
+    // BANCO DE DADOS FIXO
+    const secadorDB = {
+        config: [
+            { block: "Speed Configuration", items: [{ label: "Teeth seen by MPU", val: "32.00" }, { label: "MPU Gear Ratio 1", val: "1.00" }, { label: "MPU 1 Max Hz", val: "5333.00" }, { label: "MPU 2 Max Hz", val: "5333.00" }, { label: "Max Speed Level", val: "5333.00" }, { label: "Min Speed Level", val: "50.00" }] },
+            { block: "Start Mode", items: [{ label: "Manual Start Mode?", val: "FALSE" }] },
+            { block: "Actuator Configuration", items: [{ label: "Use 20-160 mA Actuator?", val: "FALSE" }, { label: "Use 4-20 mA Actuator?", val: "TRUE" }] },
+            { block: "Operating Mode", items: [{ label: "Manual Control Only?", val: "FALSE" }, { label: "Use Remote Speed Setting?", val: "TRUE" }, { label: "Use High-Signal-Select?", val: "FALSE" }, { label: "Use Modbus Analog Input?", val: "FALSE" }] },
+            { block: "Readouts", items: [{ label: "Speed Readout 4 mA Value", val: "0.0" }, { label: "Speed Readout 20 mA Value", val: "10000.0" }, { label: "Readout #2 Option", val: "1. Actual Speed" }, { label: "Readout #2 4mA Value", val: "0.0" }, { label: "Readout #2 20mA Value", val: "10000.0" }] },
+            { block: "Relays", items: [{ label: "Use Speed Switch?", val: "TRUE" }, { label: "Switch #2 Underspeed?", val: "FALSE" }, { label: "Use Hand Valve?", val: "FALSE" }, { label: "Trip Relay Energizes For Trip?", val: "FALSE" }, { label: "Reset Clear Trip?", val: "TRUE" }] },
+            { block: "Modbus Communication", items: [{ label: "Use Modbus Port?", val: "FALSE" }, { label: "Hardware Config", val: "3 = RS 485" }, { label: "Transmission Mode", val: "2 = RTU" }, { label: "Network Address", val: "1.0" }] }
+        ],
+        service: [
+            { block: "Speed Dynamics", items: [{ label: "Low Speed gain", val: "1.82" }, { label: "Low Speed Reset", val: "0.3" }, { label: "High Speed Switch Point", val: "10323.07" }, { label: "High Speed Gain", val: "2.5" }, { label: "High Speed Reset", val: "0.4" }, { label: "High Speed Selected", val: "FALSE" }] },
+            { block: "Speed Values", items: [{ label: "Min Governor Spe", val: "3539.28" }, { label: "Max Governor Sp", val: "5631" }, { label: "Overspeed Level", val: "5850" }, { label: "External Ospd Le", val: "5850" }, { label: "Overspeed Test Li", val: "7450" }, { label: "Droop (%)", val: "0" }, { label: "Use Setpoint Set-I", val: "TRUE" }] },
+            { block: "Failure Mpu Override", items: [{ label: "Auto-Ovrd-Off Speed", val: "400" }, { label: "Max Starting Time", val: "30" }, { label: "Auto-Ovrd-On Speed", val: "400" }, { label: "Auto-Ovrd-On Delay", val: "5" }, { label: "Ovrd On Startup", val: "TRUE" }] },
+            { block: "Idle/Min Gov Ramp", items: [{ label: "Idle Speed", val: "1330" }, { label: "Use Idle/Min Gov Ramp?", val: "TRUE" }, { label: "Minimum Governor Speed", val: "5550" }, { label: "Idle/Min Gov Rate", val: "50.01" }, { label: "Use Ramp to idle function?", val: "TRUE" }] },
+            { block: "SPD SW/HAND VLV", items: [{ label: "Relay #1 On", val: "5000" }, { label: "Relay #1 Off", val: "4700" }, { label: "Relay #2 On", val: "5850" }, { label: "Relay #2 Off", val: "5800" }, { label: "Underspeed Level", val: "5000" }] },
+            { block: "Valve Output", items: [{ label: "Valve - Offset Adjust", val: "0.05" }, { label: "Valve - Gain Adjust", val: "1" }, { label: "Valve Ramp Position", val: "-2" }, { label: "Ramp Rate", val: "4.99" }] }
+        ]
+    };
+
+    const templateDB = {
+        data: [
+            { label: "Tag / Nome da Turbina", val: "" },
+            { label: "Cliente", val: "" },
+            { label: "Data", val: "" },
+            { label: "Governor Part Number", val: "9905-" },
+            { label: "Rotação Nominal", val: "" }
+        ],
+        config: JSON.parse(JSON.stringify(secadorDB.config)), 
+        service: JSON.parse(JSON.stringify(secadorDB.service))
+    };
+
+    let db = JSON.parse(JSON.stringify(templateDB));
+
+    // FUNÇÕES GLOBAIS
+    function saveVal(val, tabId, bIdx, iIdx) {
+        if(bIdx === null) db[tabId][iIdx].val = val; 
+        else db[tabId][bIdx].items[iIdx].val = val; 
+    }
+
+    function toggleBlock(id) {
+        const el = document.getElementById(id);
+        el.style.display = el.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function saveTurbine() {
+        const tName = db.data[0].val; 
+        if(!tName) return alert("Preencha o Tag/Nome da Turbina (Aba 1) para salvar!");
+        localStorage.setItem("Peak150_" + tName, JSON.stringify(db));
+        alert("Configuração salva na memória: " + tName);
+        openTab('archive', document.querySelectorAll('.tab')[4]);
+    }
+
+    function loadTurbine(key) {
+        const saved = localStorage.getItem(key);
+        if(saved) {
+            db = JSON.parse(saved);
+            alert("Turbina Carregada com Sucesso!");
+            openTab('data', document.querySelectorAll('.tab')[0]);
+        }
+    }
+
+    function deleteTurbine(key) {
+        if(confirm("Deseja apagar permanentemente esta turbina da memória?")) {
+            localStorage.removeItem(key);
+            openTab('archive', document.querySelectorAll('.tab')[4]);
+        }
+    }
+
+    function openTab(tabId, el) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        if(el) el.classList.add('active');
+
+        let html = '';
+        const screen = document.getElementById('screen-content');
+
+        if(tabId === 'secador') {
+            screen.style.background = "var(--lcd-readonly)";
+            html += `<div style="text-align:center; font-weight:bold; margin-bottom:8px; border-bottom:2px solid #000; padding-bottom:5px;">🔒 BASE DE DADOS FIXA (AS-BUILT)</div>
+            <div class="cert-box"><strong>CERTIFICADO DE ORIGEM:</strong><br>► Cliente: TROPICAL - TERNO DE SECAGEM<br>► Emitido por: LUIS<br>► Distribuidor: WS CONTROLES<br>► Gov. PN: 9905-860</div>`;
+            
+            ['config', 'service'].forEach(mode => {
+                html += `<div style="background:rgba(0,0,0,0.2); text-align:center; font-weight:bold; padding:5px; margin-top:10px;">${mode.toUpperCase()} MODE</div>`;
+                secadorDB[mode].forEach((b, bIdx) => {
+                    let itemsHtml = '';
+                    b.items.forEach(i => { itemsHtml += `<div class="lcd-row"><span>${i.label}</span> <span class="lcd-readonly-val">${i.val}</span></div>`; });
+                    html += `<div class="lcd-block"><div class="lcd-title" onclick="toggleBlock('sec_${mode}_${bIdx}')"><span>${b.block}</span> <span>▼</span></div><div class="lcd-content" id="sec_${mode}_${bIdx}" style="display:none">${itemsHtml}</div></div>`;
+                });
+            });
+        } 
+        else if(tabId === 'data') {
+            screen.style.background = "var(--lcd-bg)";
+            db.data.forEach((i, idx) => {
+                html += `<div class="lcd-row"><span>${i.label}</span> <input class="lcd-input" value="${i.val}" oninput="saveVal(this.value, '${tabId}', null, ${idx})"></div>`;
+            });
+        } 
+        else if (tabId === 'archive') {
+            screen.style.background = "var(--lcd-bg)";
+            html += `<div style="text-align:center; font-weight:bold; margin-bottom:10px;">MÁQUINAS SALVAS</div><button class="btn-save" onclick="saveTurbine()">💾 SALVAR TURBINA ATUAL</button><div style="margin-top:15px;"><b>Arquivos no Celular:</b><br><br>`;
+            let hasFiles = false;
+            for(let i=0; i<localStorage.length; i++) {
+                let key = localStorage.key(i);
+                if(key.startsWith("Peak150_")) {
+                    hasFiles = true;
+                    html += `<div style="border-bottom:1px solid #000; padding:10px 0;"><strong>${key.replace("Peak150_", "")}</strong><div style="display:flex; gap:5px; margin-top:5px;"><button class="btn-load" onclick="loadTurbine('${key}')">Carregar</button><button onclick="deleteTurbine('${key}')" style="background:#c0392b; color:white; border:none; padding:10px; cursor:pointer; width:30%; border-radius:4px;">Apagar</button></div></div>`;
+                }
+            }
+            if(!hasFiles) html += `<i>Nenhuma turbina salva.</i>`;
+            html += `</div>`;
+        } 
+        else {
+            screen.style.background = "var(--lcd-bg)";
+            db[tabId].forEach((b, bIdx) => {
+                let itemsHtml = '';
+                if(b.items) {
+                    b.items.forEach((i, iIdx) => {
+                        itemsHtml += `<div class="lcd-row"><span>${i.label}</span> <input class="lcd-input" value="${i.val}" oninput="saveVal(this.value, '${tabId}', ${bIdx}, ${iIdx})"></div>`;
+                    });
+                }
+                html += `<div class="lcd-block"><div class="lcd-title" onclick="toggleBlock('b_${tabId}_${bIdx}')"><span>${b.block}</span> <span>▼</span></div><div class="lcd-content" id="b_${tabId}_${bIdx}" style="display:${bIdx === 0 ? 'block' : 'none'}">${itemsHtml}</div></div>`;
+            });
+        }
+        screen.innerHTML = html;
+    }
+
+    function gerarLaudo() {
+        const { jsPDF } = window.jspdf; const doc = new jsPDF();
+        doc.setFillColor(0, 90, 140); doc.rect(0, 0, 210, 25, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.text("WOODWARD PEAK 150 - AS-BUILT", 15, 16);
+        doc.setTextColor(0, 0, 0); doc.setFontSize(10);
+        doc.text(`Turbina: ${db.data[0].val || 'Não Nomeada'}`, 15, 35); doc.text(`Cliente: ${db.data[1].val || 'N/A'}`, 15, 42);
+
+        let tableData = [];
+        ['config', 'service'].forEach(tab => {
+            db[tab].forEach(b => {
+                tableData.push([{ content: `[${tab.toUpperCase()}] ${b.block}`, colSpan: 2, styles: { fillColor: [230,230,230], fontStyle: 'bold' } }]);
+                if(b.items) b.items.forEach(i => tableData.push([i.label, i.val]));
+            });
+        });
+
+        doc.autoTable({ startY: 50, head: [['Parâmetro', 'Valor Gravado']], body: tableData, theme: 'grid', headStyles: { fillColor: [0, 90, 140] }, pageBreak: 'auto' });
+        doc.save(`Laudo_Peak150_${(db.data[0].val || 'Geral').replace(/\s+/g, '_')}.pdf`);
+    }
+
+    // CARREGA A PRIMEIRA ABA ASSIM QUE A PÁGINA ABRE
+    window.onload = function() {
+        openTab('data', document.querySelectorAll('.tab')[0]);
+    };
+</script>
+</body>
+</html>
